@@ -153,7 +153,6 @@ def test_2(buf):
             return False
         
         
-
 def traceroute(sendsock: util.Socket, recvsock: util.Socket, ip: str) \
         -> list[list[str]]:
     """ Run traceroute and returns the discovered path.
@@ -177,6 +176,8 @@ def traceroute(sendsock: util.Socket, recvsock: util.Socket, ip: str) \
     # TODO Add your implementation
     results = []
     debug_res = []
+    ports_seen = set()
+    ips_seen = set()
     idx = -1
     last_ip = ""
     
@@ -186,26 +187,57 @@ def traceroute(sendsock: util.Socket, recvsock: util.Socket, ip: str) \
     while ttl <= TRACEROUTE_MAX_TTL:
         sendsock.set_ttl(ttl)
         routers = []
+        
+        flag = False
 
         for i in range(PROBE_ATTEMPT_COUNT):
             sent_msg_num += 1
             msg = f"This is my {i}th attempt to send POTATO with {ttl}!".encode()
-            sendsock.sendto(msg, (ip, TRACEROUTE_PORT_NUMBER))
+            
+            port = TRACEROUTE_PORT_NUMBER + (ttl - 1)
+            
+            sendsock.sendto(msg, (ip, port))
 
-            if recvsock.recv_select():
+            while recvsock.recv_select():
                 buf, _ = recvsock.recvfrom()
                 
                 # Test B6
                 if test_2(buf):
-                    continue
+                    break
                 
                 ipv4 = IPv4(buf)
                 
                 # Test B2-B5
                 if test_1(buf, ipv4):
-                    continue
+                    break
                 
                 ip_src = ipv4.src
+                
+                icmp_header_idx = ipv4.header_len
+                icmp_header = buf[icmp_header_idx:]
+
+                original_ipv4_buf = icmp_header[8:]
+
+                original_ipv4 = IPv4(original_ipv4_buf)
+                original_ipv4_header_len = original_ipv4.header_len
+
+                original_udp_buf = original_ipv4_buf[original_ipv4_header_len:]
+                original_udp = UDP(original_udp_buf)
+                
+                cur_port = original_udp.dst_port
+                
+                if original_ipv4.dst != ip:
+                    continue
+                
+                if cur_port in ports_seen and ip_src in ips_seen:
+                    flag = True
+                    if cur_port != port:
+                        continue
+                    else:
+                        break
+                
+                ips_seen.add(ip_src)
+                ports_seen.add(cur_port)
                 
                 routers.append(ip_src)
 
@@ -217,6 +249,9 @@ def traceroute(sendsock: util.Socket, recvsock: util.Socket, ip: str) \
                     # raise ValueError(f'debug_res = {debug_res} and \ndebug_msg = {debug_msg}')
                     return results
                 
+                if cur_port == port:
+                    break
+                
         # Test B13-B14
         if len(list(set(routers))) > 0:
             if last_ip != "":
@@ -226,13 +261,15 @@ def traceroute(sendsock: util.Socket, recvsock: util.Socket, ip: str) \
                         continue
                     
             last_ip = list(set(routers))[-1]
-
-        results.append(list(set(routers)))
-        debug_res.append(routers)
-        idx += 1
-        util.print_result(results[idx], ttl)
-        
-        ttl += 1
+            
+        if flag and len(routers) == 0:
+            pass
+        else:
+            results.append(list(set(routers)))
+            debug_res.append(routers)
+            idx += 1
+            util.print_result(results[idx], ttl)
+            ttl += 1
 
     return results
 
