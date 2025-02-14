@@ -216,8 +216,8 @@ def traceroute(sendsock: util.Socket, recvsock: util.Socket, ip: str) \
         idx += 1
         util.print_result(results[idx], ttl)
         
-        if ttl == 3:
-            raise ValueError(f"the results is {results}")
+        # if ttl == 3:
+        #     raise ValueError(f"the results is {results}")
 
     return results
 
