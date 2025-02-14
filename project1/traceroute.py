@@ -176,14 +176,19 @@ def traceroute(sendsock: util.Socket, recvsock: util.Socket, ip: str) \
 
     # TODO Add your implementation
     results = []
+    debug_res = []
     idx = -1
-
-    for ttl in range(1, TRACEROUTE_MAX_TTL + 1):
+    last_ip = ""
+    
+    sent_msg_num = 0
+    
+    ttl = 1
+    while ttl <= TRACEROUTE_MAX_TTL:
         sendsock.set_ttl(ttl)
         routers = []
-        # ips = set()
 
         for i in range(PROBE_ATTEMPT_COUNT):
+            sent_msg_num += 1
             msg = f"This is my {i}th attempt to send POTATO with {ttl}!".encode()
             sendsock.sendto(msg, (ip, TRACEROUTE_PORT_NUMBER))
 
@@ -201,23 +206,33 @@ def traceroute(sendsock: util.Socket, recvsock: util.Socket, ip: str) \
                     continue
                 
                 ip_src = ipv4.src
-                # if ip_src in ips:
-                #     continue
-                # ips.add(ip_src)
+                
                 routers.append(ip_src)
 
                 if ip_src == ip:
                     results.append(list(set(routers)))
+                    debug_res.append(routers)
                     idx += 1
                     util.print_result(results[idx], ttl)
+                    # raise ValueError(f'debug_res = {debug_res} and \ndebug_msg = {debug_msg}')
                     return results
+                
+        # Test B13-B14
+        if len(list(set(routers))) > 0:
+            if last_ip != "":
+                if len(list(set(routers))) == 1:
+                    new_ip = list(set(routers))[0]
+                    if last_ip == new_ip:
+                        continue
+                    
+            last_ip = list(set(routers))[-1]
 
         results.append(list(set(routers)))
+        debug_res.append(routers)
         idx += 1
         util.print_result(results[idx], ttl)
         
-        # if ttl == 3:
-        #     raise ValueError(f"the results is {results}")
+        ttl += 1
 
     return results
 
@@ -226,4 +241,22 @@ if __name__ == '__main__':
     args = util.parse_args()
     ip_addr = util.gethostbyname(args.host)
     print(f"traceroute to {args.host} ({ip_addr})")
-    traceroute(util.Socket.make_udp(), util.Socket.make_icmp(), ip_addr)
+    # traceroute(util.Socket.make_udp(), util.Socket.make_icmp(), ip_addr)
+    
+    sendsock = util.Socket.make_udp()
+    recvsock = util.Socket.make_icmp()
+    
+    sendsock.set_ttl(12)
+    message = f"Potato{34:05d}".encode()
+    sendsock.sendto(message, (ip_addr, TRACEROUTE_PORT_NUMBER))
+    
+    if recvsock.recv_select():  # Check if there's a packet to process.
+        buf, address = recvsock.recvfrom()  # Receive the packet.
+
+        # Print out the packet for debugging.
+        last_buf = str(buf)[-6:-1]
+        print(f'last buf is {last_buf} and if the last_buf the string: {type(last_buf)}, and buf {type(buf)}')
+        print(f"Packet bytes: {buf.hex()}")
+        print(f"Packet is from IP: {address[0]}")
+        print(f"Packet is from port: {address[1]}")
+    
